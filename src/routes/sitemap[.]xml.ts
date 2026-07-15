@@ -13,6 +13,12 @@ export const Route = createFileRoute("/sitemap.xml")({
   server: {
     handlers: {
       GET: async () => {
+        // Public, indexable routes only.
+        // Intentionally excluded:
+        //   - /                                     → redirects to /auth or /p/... depending on session
+        //   - /p/$projectId, /p/$projectId/$threadId → private (behind _authenticated), noindex
+        //   - /api/chat                             → API endpoint, not a page
+        // When adding a new PUBLIC route under src/routes/, add it here.
         const entries: SitemapEntry[] = [
           { path: "/auth", changefreq: "monthly", priority: "0.8" },
           { path: "/students", changefreq: "monthly", priority: "0.7" },
