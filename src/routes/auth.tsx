@@ -133,7 +133,7 @@ function AuthPage() {
               <Code2 className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold tracking-tight">CodeMind</h1>
+              <span className="text-lg font-semibold tracking-tight">CodeMind</span>
               <p className="text-xs text-muted-foreground">AI-powered code editor</p>
             </div>
           </div>
