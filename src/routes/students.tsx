@@ -78,7 +78,8 @@ function StudentsPage() {
           one change at a time.
         </p>
 
-        <div className="mt-10 grid gap-4 sm:grid-cols-2">
+        <h2 className="mt-10 text-2xl font-semibold tracking-tight">Features</h2>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <Feature
             icon={<Sparkles className="h-4 w-4 text-primary" />}
             title="Learn by building"
