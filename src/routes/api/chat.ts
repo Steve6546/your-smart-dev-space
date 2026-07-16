@@ -115,6 +115,7 @@ function makeTools(
             .update({ content, language: langFromPath(path) })
             .eq("id", existing.id);
           if (error) return { ok: false, error: error.message };
+          await indexFile(supabase, { projectId, userId, path, content });
           return { ok: true, action: "updated", path };
         }
         const { error } = await supabase.from("files").insert({
@@ -126,6 +127,7 @@ function makeTools(
           is_folder: false,
         });
         if (error) return { ok: false, error: error.message };
+        await indexFile(supabase, { projectId, userId, path, content });
         return { ok: true, action: "created", path };
       },
     }),
