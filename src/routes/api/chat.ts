@@ -333,6 +333,7 @@ function makeTools(
           .update({ content: next })
           .eq("id", file.id);
         if (uerr) return { ok: false, error: uerr.message };
+        await indexFile(supabase, { projectId, userId, path, content: next });
         return { ok: true, action: "updated", path, strategy };
       },
     }),
