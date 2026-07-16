@@ -209,6 +209,7 @@ function makeTools(
           .eq("project_id", projectId)
           .eq("path", from);
         if (error) return { ok: false, error: "Rename failed" };
+        await renameInIndex(supabase, projectId, from, to);
         return { ok: true, action: "renamed", from, to };
       },
     }),
