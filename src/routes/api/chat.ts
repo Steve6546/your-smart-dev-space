@@ -1,8 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { convertToModelMessages, generateText, streamText, stepCountIs, tool, type UIMessage } from "ai";
+import { convertToModelMessages, generateText, streamText, stepCountIs, tool, NoObjectGeneratedError, type UIMessage } from "ai";
 import { z } from "zod";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
+import {
+  indexFile,
+  indexProject,
+  isIndexEmpty,
+  removeFromIndex,
+  removePrefixFromIndex,
+  renameInIndex,
+  searchIndex,
+} from "@/lib/project-index.server";
 
 type OpenFile = { path: string; language?: string | null; content: string };
 
