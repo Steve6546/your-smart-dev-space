@@ -89,7 +89,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         property: "og:description",
         content:
-          "Build, edit, and ship code with an AI that thinks first — CodeMind reads, patches, and refactors your files in real time.",
+          "CodeMind is an AI-powered full-stack code editor that reads, patches, and refactors your files in real time.",
       },
       { property: "og:type", content: "website" },
       { property: "og:url", content: "https://smart-code-env.lovable.app" },
@@ -100,7 +100,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         name: "twitter:description",
         content:
-          "Build, edit, and ship code with an AI that thinks first — CodeMind reads, patches, and refactors your files in real time.",
+          "CodeMind is an AI-powered full-stack code editor that reads, patches, and refactors your files in real time.",
       },
     ],
     links: [
