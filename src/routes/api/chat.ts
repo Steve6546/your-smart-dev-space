@@ -189,6 +189,7 @@ function makeTools(
           is_folder: true,
         });
         if (error) return { ok: false, error: "Create failed" };
+        await indexFile(supabase, { projectId, userId, path: clean, content: "", isFolder: true });
         return { ok: true, action: "created", path: clean };
       },
     }),
