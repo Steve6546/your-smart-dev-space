@@ -143,6 +143,7 @@ function makeTools(
           .eq("project_id", projectId)
           .eq("path", path);
         if (error) return { ok: false, error: error.message };
+        await removeFromIndex(supabase, projectId, path);
         return { ok: true, action: "deleted", path };
       },
     }),
