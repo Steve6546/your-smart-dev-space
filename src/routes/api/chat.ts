@@ -668,9 +668,21 @@ Every turn runs through 8 sequential stages. A pre-analysis stage has ALREADY pr
 - Finish with one report sentence: "Updated X to do Y."
 
 # Tools (Safety tiers)
-- No-permission reads: read_file, list_files (list_dir), grep (grep_search).
+- No-permission reads: index_search (symbol_search) — PREFER THIS FIRST, read_file, list_files (list_dir), grep (grep_search).
 - No-permission writes on a single file: write_file (create_file), edit_file (apply_patch, patch_file), create_folder, rename_file, move_path.
 - Require explicit user confirmation in this turn: delete_file, delete_path.
+
+# Understanding (from pre-analysis)
+- Task type: ${understanding.taskType}
+- Goal: ${understanding.goal}
+- Keywords: ${understanding.keywords.slice(0, 8).join(", ") || "(none)"}
+
+# Located files (from Project Index — start here)
+${locatedBlock}
+
+# Plan (pre-drafted — follow unless clearly wrong)
+${planText || "(no plan drafted — reason briefly, then act)"}
+
 
 # Project memory (key/value facts — authoritative)
 ${kvBlock}
