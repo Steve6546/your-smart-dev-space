@@ -176,6 +176,75 @@ export type Database = {
           },
         ]
       }
+      project_index: {
+        Row: {
+          api_endpoints: string[]
+          classes: string[]
+          created_at: string
+          db_tables: string[]
+          env_vars: string[]
+          exports: string[]
+          functions: string[]
+          id: string
+          imports: string[]
+          interfaces: string[]
+          kind: string
+          language: string | null
+          path: string
+          project_id: string
+          routes: string[]
+          size: number
+          symbols_hash: string | null
+          types: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          api_endpoints?: string[]
+          classes?: string[]
+          created_at?: string
+          db_tables?: string[]
+          env_vars?: string[]
+          exports?: string[]
+          functions?: string[]
+          id?: string
+          imports?: string[]
+          interfaces?: string[]
+          kind?: string
+          language?: string | null
+          path: string
+          project_id: string
+          routes?: string[]
+          size?: number
+          symbols_hash?: string | null
+          types?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          api_endpoints?: string[]
+          classes?: string[]
+          created_at?: string
+          db_tables?: string[]
+          env_vars?: string[]
+          exports?: string[]
+          functions?: string[]
+          id?: string
+          imports?: string[]
+          interfaces?: string[]
+          kind?: string
+          language?: string | null
+          path?: string
+          project_id?: string
+          routes?: string[]
+          size?: number
+          symbols_hash?: string | null
+          types?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       project_memory: {
         Row: {
           content: string
