@@ -171,6 +171,7 @@ function makeTools(
         if (d1.error) return { ok: false, error: "Delete failed" };
         const d2 = await supabase.from("files").delete().eq("project_id", projectId).like("path", likePat);
         if (d2.error) return { ok: false, error: "Delete failed" };
+        await removePrefixFromIndex(supabase, projectId, prefix);
         return { ok: true, action: "deleted", path };
       },
     }),
