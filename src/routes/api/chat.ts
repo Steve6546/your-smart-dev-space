@@ -248,6 +248,7 @@ function makeTools(
             .update({ path: np, language: r.is_folder ? null : langFromPath(np) })
             .eq("id", r.id);
         }
+        await renameInIndex(supabase, projectId, f, t);
         return { ok: true, action: "renamed", from: f, to: t, moved: rows.length };
       },
     }),
