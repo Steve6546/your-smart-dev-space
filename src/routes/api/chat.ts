@@ -373,6 +373,18 @@ function makeTools(
         return { ok: true, results };
       },
     }),
+    index_search: tool({
+      description:
+        "Query the Project Index to find files by symbol name (function/class/export/route/api_endpoint/db_table) or by a path substring. Use this FIRST — before read_file or grep — to locate the smallest set of files relevant to the task.",
+      inputSchema: z.object({
+        query: z.string().optional(),
+        symbol: z.string().optional(),
+      }),
+      execute: async ({ query, symbol }) => {
+        const hits = await searchIndex(supabase, { projectId, query, symbol });
+        return { ok: true, hits };
+      },
+    }),
   };
   // Aliases so the agent can use either name.
   return {
@@ -383,6 +395,7 @@ function makeTools(
     search_project: tools.grep,
     grep_search: tools.grep,
     list_dir: tools.list_files,
+    symbol_search: tools.index_search,
   };
 }
 
