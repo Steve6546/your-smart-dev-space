@@ -734,6 +734,57 @@ ${fileContext}`;
                 });
               }
 
+              // === Agent Engine — Stage 7: Verify + auto-rollback ==========
+              // Cheap structural check on files the agent wrote this turn:
+              // JSON must parse, TS/JS/CSS must have balanced brackets. On
+              // failure we restore every snapshot from this turn and record
+              // a note so the user (and next turn) can see what happened.
+              try {
+                const writtenPaths = new Set<string>();
+                for (const s of snapshots) {
+                  if (["write_file", "edit_file"].includes(s.action)) writtenPaths.add(s.path);
+                  if (s.action === "rename_to" || s.action === "move_to") writtenPaths.add(s.path);
+                }
+                if (writtenPaths.size > 0) {
+                  const { data: currentRows } = await supabase
+                    .from("files")
+                    .select("path, content")
+                    .eq("project_id", projectId)
+                    .in("path", Array.from(writtenPaths))
+                    .eq("is_folder", false);
+                  const verify = verifyPatches(
+                    (currentRows ?? []).map((r) => ({ path: r.path, content: r.content })),
+                  );
+                  if (!verify.ok) {
+                    await applyRollback(supabase, { projectId, userId, snapshots });
+                    // Also drop the snapshot rows we just persisted, since the
+                    // apply was reverted — there is nothing left to roll back.
+                    if (assistantId) {
+                      await supabase
+                        .from("file_snapshots")
+                        .delete()
+                        .eq("project_id", projectId)
+                        .eq("message_id", assistantId);
+                    }
+                    await supabase.from("project_memory").insert({
+                      project_id: projectId,
+                      user_id: userId,
+                      thread_id: threadId,
+                      kind: "note",
+                      content:
+                        "verify_failed: rolled back — " +
+                        verify.issues
+                          .slice(0, 5)
+                          .map((i) => `${i.path} [${i.kind}] ${i.message}`)
+                          .join("; "),
+                    });
+                  }
+                }
+              } catch (e) {
+                console.error("verify/rollback stage failed", e);
+              }
+
+
               // --- Context compaction: refresh the thread summary after every
               // turn once the conversation exceeds ~30 messages. Stored in
               // project_memory so future turns can drop old messages.
