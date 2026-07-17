@@ -521,3 +521,104 @@ export const countSnapshotsForMessages = createServerFn({ method: "POST" })
     return counts;
   });
 
+// ---------------------------------------------------------------------------
+// Project Index — inspection / debugging endpoints
+// ---------------------------------------------------------------------------
+
+/**
+ * High-level index freshness for a project. Compares `files.updated_at`
+ * against the paired `project_index.updated_at` row so the UI (and any
+ * external observer) can tell how stale the index is.
+ */
+export const projectIndexStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ projectId: z.string().uuid() }).parse(d))
+  .handler(async ({ context, data }) => {
+    const [{ data: files, error: fErr }, { data: idx, error: iErr }] = await Promise.all([
+      context.supabase
+        .from("files")
+        .select("path, updated_at, is_folder")
+        .eq("project_id", data.projectId),
+      context.supabase
+        .from("project_index")
+        .select("path, updated_at, kind, size")
+        .eq("project_id", data.projectId),
+    ]);
+    if (fErr) throw safeDbError(fErr);
+    if (iErr) throw safeDbError(iErr);
+
+    const idxByPath = new Map<string, { updated_at: string; kind: string; size: number }>();
+    for (const r of idx ?? []) idxByPath.set(r.path, r);
+
+    const stalePaths: string[] = [];
+    const missingPaths: string[] = [];
+    let lastIndexed: string | null = null;
+    for (const f of files ?? []) {
+      if (f.is_folder) continue;
+      const row = idxByPath.get(f.path);
+      if (!row) {
+        missingPaths.push(f.path);
+        continue;
+      }
+      if (new Date(row.updated_at).getTime() + 1000 < new Date(f.updated_at).getTime()) {
+        stalePaths.push(f.path);
+      }
+      if (!lastIndexed || row.updated_at > lastIndexed) lastIndexed = row.updated_at;
+    }
+    const filePaths = new Set((files ?? []).filter((f) => !f.is_folder).map((f) => f.path));
+    const orphanPaths = (idx ?? [])
+      .filter((r) => r.kind !== "folder" && !filePaths.has(r.path))
+      .map((r) => r.path);
+
+    const totalFiles = (files ?? []).filter((f) => !f.is_folder).length;
+    const indexedFiles = (idx ?? []).filter((r) => r.kind !== "folder").length;
+    return {
+      totalFiles,
+      indexedFiles,
+      coverage: totalFiles === 0 ? 1 : indexedFiles / totalFiles,
+      staleCount: stalePaths.length,
+      missingCount: missingPaths.length,
+      orphanCount: orphanPaths.length,
+      lastIndexedAt: lastIndexed,
+      stalePaths: stalePaths.slice(0, 50),
+      missingPaths: missingPaths.slice(0, 50),
+      orphanPaths: orphanPaths.slice(0, 50),
+    };
+  });
+
+/**
+ * Per-file index metadata. Used by the debug UI to see the actual symbols
+ * captured for a specific path (functions, exports, imports, …) and when
+ * it was last indexed.
+ */
+export const projectIndexFileDetail = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ projectId: z.string().uuid(), path: z.string().min(1).max(500) }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const { data: row, error } = await context.supabase
+      .from("project_index")
+      .select(
+        "path, kind, language, size, updated_at, functions, classes, interfaces, types, imports, exports, routes, api_endpoints, db_tables, env_vars, symbols_hash",
+      )
+      .eq("project_id", data.projectId)
+      .eq("path", data.path)
+      .maybeSingle();
+    if (error) throw safeDbError(error);
+    return row;
+  });
+
+/** Force a full rebuild of the project index (idempotent). */
+export const rebuildProjectIndex = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ projectId: z.string().uuid() }).parse(d))
+  .handler(async ({ context, data }) => {
+    const { indexProject } = await import("@/lib/project-index.server");
+    return indexProject(context.supabase, {
+      projectId: data.projectId,
+      userId: context.userId,
+    });
+  });
+
+
