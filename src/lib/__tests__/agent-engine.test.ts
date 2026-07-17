@@ -118,9 +118,10 @@ describe("locateFiles", () => {
       q.eq = () => q;
       q.or = () => q;
       q.ilike = () => q;
-      q.limit = () => ({ data: [], error: null });
+      q.limit = () => q;
       q.then = (r: (v: { data: unknown[]; error: null }) => unknown) =>
         Promise.resolve(r({ data: [], error: null }));
+
       return q;
     };
     const supabase = { from: () => build() };
