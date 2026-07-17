@@ -112,17 +112,19 @@ describe("extractSymbols", () => {
 describe("locateFiles", () => {
   it("deduplicates hits across keywords and caps output", async () => {
     type Filter = { projectId: string; symbol?: string; query?: string };
-    const supabase = {
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            eq: () => ({
-              limit: () => ({ data: [], error: null }),
-            }),
-          }),
-        }),
-      }),
+    const build = () => {
+      const q: Record<string, unknown> = {};
+      q.select = () => q;
+      q.eq = () => q;
+      q.or = () => q;
+      q.ilike = () => q;
+      q.limit = () => ({ data: [], error: null });
+      q.then = (r: (v: { data: unknown[]; error: null }) => unknown) =>
+        Promise.resolve(r({ data: [], error: null }));
+      return q;
     };
+    const supabase = { from: () => build() };
+
     // Direct injection: stub searchIndex via module mock is heavier; here we
     // ensure locateFiles handles an empty backend without throwing.
     const out = await locateFiles(supabase as never, "proj", ["auth", "login"]);
