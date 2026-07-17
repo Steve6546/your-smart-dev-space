@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { convertToModelMessages, generateText, streamText, stepCountIs, tool, NoObjectGeneratedError, type UIMessage } from "ai";
+import { convertToModelMessages, generateText, streamText, stepCountIs, tool, type UIMessage } from "ai";
 import { z } from "zod";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
@@ -12,6 +12,15 @@ import {
   renameInIndex,
   searchIndex,
 } from "@/lib/project-index.server";
+import {
+  understandRequest,
+  locateFiles,
+  formatLocatedBlock,
+  createPlan,
+  verifyPatches,
+  applyRollback,
+} from "@/lib/agent-engine.server";
+
 
 type OpenFile = { path: string; language?: string | null; content: string };
 
@@ -454,9 +463,7 @@ export const Route = createFileRoute("/api/chat")({
         const gateway = createLovableAiGatewayProvider(key);
         const model = gateway("google/gemini-3.5-flash");
 
-        // === Agent Engine — Stage 1/2: Understand the request =============
-        // Small structured LLM call that extracts the goal, task type, and
-        // keywords for index lookup. Runs BEFORE any tools are exposed.
+        // === Agent Engine — Stage 2: Understand ============================
         const lastUserText = (last && last.role === "user"
           ? (last.parts as Array<{ type: string; text?: string }>)
               .map((p) => (p.type === "text" ? p.text ?? "" : ""))
@@ -464,27 +471,10 @@ export const Route = createFileRoute("/api/chat")({
               .trim()
           : ""
         ).slice(0, 4000);
+        const understanding = await understandRequest(model, lastUserText);
 
-        type Understanding = { goal: string; taskType: string; keywords: string[] };
-        let understanding: Understanding = { goal: lastUserText.slice(0, 200), taskType: "unknown", keywords: [] };
-        try {
-          const understandSchema = z.object({
-            goal: z.string(),
-            taskType: z.string(),
-            keywords: z.array(z.string()),
-          });
-          const { text } = await generateText({
-            model,
-            prompt: `Return ONLY a compact JSON object matching {"goal": string, "taskType": one of ("fix" | "feature" | "refactor" | "explain" | "review" | "other"), "keywords": string[]} describing this developer request. keywords are file names, function names, or module names likely to be involved (max 8, no filler words). Language of goal/taskType should mirror the user.\n\nRequest:\n${lastUserText || "(empty)"}`,
-          });
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
-          if (jsonMatch) understanding = understandSchema.parse(JSON.parse(jsonMatch[0]));
-        } catch (e) {
-          if (!NoObjectGeneratedError.isInstance(e)) console.error("understand stage failed", e);
-        }
 
         // === Agent Engine — Stage 3: Locate files via Project Index ========
-        // Bootstrap the index on first turn if it's empty.
         try {
           if (await isIndexEmpty(supabase, projectId)) {
             await indexProject(supabase, { projectId, userId });
@@ -492,67 +482,17 @@ export const Route = createFileRoute("/api/chat")({
         } catch (e) {
           console.error("index bootstrap failed", e);
         }
-
-        const locateHits = new Map<string, { functions: string[]; classes: string[]; exports: string[] }>();
-        try {
-          for (const kw of understanding.keywords.slice(0, 6)) {
-            const bySymbol = await searchIndex(supabase, { projectId, symbol: kw, limit: 10 });
-            const byPath = await searchIndex(supabase, { projectId, query: kw, limit: 10 });
-            for (const h of [...bySymbol, ...byPath]) {
-              if (!locateHits.has(h.path)) {
-                locateHits.set(h.path, {
-                  functions: h.functions.slice(0, 8),
-                  classes: h.classes.slice(0, 8),
-                  exports: h.exports.slice(0, 8),
-                });
-              }
-            }
-          }
-        } catch (e) {
-          console.error("locate stage failed", e);
-        }
-        const locatedBlock = locateHits.size
-          ? Array.from(locateHits.entries())
-              .slice(0, 15)
-              .map(([p, s]) => {
-                const bits = [
-                  s.functions.length ? `functions: ${s.functions.join(", ")}` : "",
-                  s.classes.length ? `classes: ${s.classes.join(", ")}` : "",
-                  s.exports.length ? `exports: ${s.exports.join(", ")}` : "",
-                ].filter(Boolean);
-                return `  - ${p}${bits.length ? ` (${bits.join("; ")})` : ""}`;
-              })
-              .join("\n")
-          : "  (index returned no candidates — use list_files / grep if needed)";
+        const located = await locateFiles(supabase, projectId, understanding.keywords);
+        const locatedBlock = formatLocatedBlock(located);
 
         // === Agent Engine — Stage 5: Draft an execution plan ===============
-        // Non-mutating LLM call. The plan is fed into the main streamText run
-        // as guidance; only the Apply stage below is allowed to invoke tools.
-        let planText = "";
-        try {
-          const { text } = await generateText({
-            model,
-            prompt: `You are drafting a short internal execution plan for another AI agent that will make the actual code changes next.
-
-Request:
-${lastUserText || "(empty)"}
-
-Understood as: ${understanding.taskType} — ${understanding.goal}
-Candidate files (from Project Index):
-${locatedBlock}
-
-Write a compact plan with:
-1. Files to edit (or "none")
-2. Ordered steps (numbered, one line each, max 5 steps)
-3. Risks / things to double-check (max 3 bullets)
-
-Do NOT include code. Keep the whole plan under 200 words. Mirror the user's language.`,
-          });
-          planText = text.trim().slice(0, 3000);
-        } catch (e) {
-          console.error("plan stage failed", e);
-        }
+        const planText = await createPlan(model, {
+          userText: lastUserText,
+          understanding,
+          locatedBlock,
+        });
         // === End of pre-stages =============================================
+
 
 
         const fileContext = openFiles.length
@@ -793,6 +733,57 @@ ${fileContext}`;
                   content: touched.slice(0, 20).join("; "),
                 });
               }
+
+              // === Agent Engine — Stage 7: Verify + auto-rollback ==========
+              // Cheap structural check on files the agent wrote this turn:
+              // JSON must parse, TS/JS/CSS must have balanced brackets. On
+              // failure we restore every snapshot from this turn and record
+              // a note so the user (and next turn) can see what happened.
+              try {
+                const writtenPaths = new Set<string>();
+                for (const s of snapshots) {
+                  if (["write_file", "edit_file"].includes(s.action)) writtenPaths.add(s.path);
+                  if (s.action === "rename_to" || s.action === "move_to") writtenPaths.add(s.path);
+                }
+                if (writtenPaths.size > 0) {
+                  const { data: currentRows } = await supabase
+                    .from("files")
+                    .select("path, content")
+                    .eq("project_id", projectId)
+                    .in("path", Array.from(writtenPaths))
+                    .eq("is_folder", false);
+                  const verify = verifyPatches(
+                    (currentRows ?? []).map((r) => ({ path: r.path, content: r.content })),
+                  );
+                  if (!verify.ok) {
+                    await applyRollback(supabase, { projectId, userId, snapshots });
+                    // Also drop the snapshot rows we just persisted, since the
+                    // apply was reverted — there is nothing left to roll back.
+                    if (assistantId) {
+                      await supabase
+                        .from("file_snapshots")
+                        .delete()
+                        .eq("project_id", projectId)
+                        .eq("message_id", assistantId);
+                    }
+                    await supabase.from("project_memory").insert({
+                      project_id: projectId,
+                      user_id: userId,
+                      thread_id: threadId,
+                      kind: "note",
+                      content:
+                        "verify_failed: rolled back — " +
+                        verify.issues
+                          .slice(0, 5)
+                          .map((i) => `${i.path} [${i.kind}] ${i.message}`)
+                          .join("; "),
+                    });
+                  }
+                }
+              } catch (e) {
+                console.error("verify/rollback stage failed", e);
+              }
+
 
               // --- Context compaction: refresh the thread summary after every
               // turn once the conversation exceeds ~30 messages. Stored in
