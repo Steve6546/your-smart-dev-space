@@ -24,17 +24,52 @@ files`, and `# Plan`. Only stage 6 has access to mutating tools.
 ## Rules the engine enforces
 
 - **No blind writes.** The model must `read_file` a target before editing it.
-- **Index first.** The read-only tool set exposes `index_search` for cheap
-  file discovery; the prompt tells the agent to prefer it over `grep` /
-  `list_files`.
+- **Index first.** The read-only tool set exposes `index_search` /
+  `symbol_search` for cheap file discovery; the prompt tells the agent to
+  prefer it over `grep` / `list_files`.
 - **Auto-index.** Every successful mutating tool call updates the Project
   Index synchronously so subsequent stages see fresh symbol data.
 - **Snapshotting.** Every write records a `file_snapshots` row keyed by the
   assistant message id, so a whole turn can be rolled back.
-- **Retry once.** On a tool error the agent adjusts inputs and retries a
-  single time before reporting.
+- **Auto-verify + rollback.** After the streamed apply stage the engine
+  runs `verifyPatches()` over every file the turn wrote — JSON must parse,
+  TS/TSX/JS/JSX/CSS must have balanced brackets (with strings/comments
+  skipped), and non-empty writes must not collapse to whitespace. If any
+  check fails the engine calls `applyRollback()` to restore every path
+  from the snapshots recorded in the same turn, drops the just-persisted
+  snapshot rows, and writes a `verify_failed:` note into
+  `project_memory` so the next turn sees what broke.
+
+## Stage boundaries (`src/lib/agent-engine.server.ts`)
+
+Each stage is an exported pure(-ish) function so it can be tested and
+composed independently:
+
+| Stage        | Function              | Side effects                     |
+|--------------|-----------------------|----------------------------------|
+| Understand   | `understandRequest`   | 1 LLM call, no DB                |
+| Locate       | `locateFiles`         | `searchIndex()` reads only       |
+| Plan         | `createPlan`          | 1 LLM call, no DB                |
+| Verify       | `verifyPatches`       | pure, no I/O                     |
+| Rollback     | `applyRollback`       | writes to `files` (undo)         |
+
+Only the streamed Apply stage (inside `streamText` with the mutating tool
+set) is allowed to touch files during a turn. Every other stage is either
+pure or read-only.
+
+## Debugging & tests
+
+- `projectIndexStatus({ projectId })` — coverage, staleness, missing /
+  orphan paths, last indexed timestamp.
+- `projectIndexFileDetail({ projectId, path })` — every symbol array
+  captured for one file.
+- `rebuildProjectIndex({ projectId })` — force a full rebuild.
+- Vitest suite `src/lib/__tests__/agent-engine.test.ts` exercises
+  `extractSymbols`, `verifyPatches`, `checkBrackets`, `locateFiles`, and
+  `applyRollback`. Run with `bun run test`.
 
 ## Failure modes handled
+
 
 - The Understand / Plan stages catch `NoObjectGeneratedError` and fall back
   to raw text parsing, so a malformed structured reply cannot crash a turn.
