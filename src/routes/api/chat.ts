@@ -464,7 +464,15 @@ export const Route = createFileRoute("/api/chat")({
         const model = gateway("google/gemini-3.5-flash");
 
         // === Agent Engine — Stage 2: Understand ============================
+        const lastUserText = (last && last.role === "user"
+          ? (last.parts as Array<{ type: string; text?: string }>)
+              .map((p) => (p.type === "text" ? p.text ?? "" : ""))
+              .join(" ")
+              .trim()
+          : ""
+        ).slice(0, 4000);
         const understanding = await understandRequest(model, lastUserText);
+
 
         // === Agent Engine — Stage 3: Locate files via Project Index ========
         try {
