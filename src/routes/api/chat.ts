@@ -394,6 +394,86 @@ function makeTools(
         return { ok: true, hits };
       },
     }),
+    github_list_repos: tool({
+      description:
+        "List GitHub repositories accessible to the workspace connector. Use to help the user pick a repo to import or link.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const { listRepos } = await import("@/lib/github.server");
+        try {
+          const repos = await listRepos(50);
+          return {
+            ok: true,
+            repos: repos.map((r) => ({
+              full_name: r.full_name, owner: r.owner.login, name: r.name,
+              default_branch: r.default_branch, private: r.private,
+            })),
+          };
+        } catch (e) {
+          return { ok: false, error: (e as Error).message };
+        }
+      },
+    }),
+    github_read_file: tool({
+      description:
+        "Read a file from ANY GitHub repository (reference material) without importing the repo. Returns UTF-8 content up to 1 MB.",
+      inputSchema: z.object({
+        owner: z.string().min(1),
+        repo: z.string().min(1),
+        path: z.string().min(1),
+        branch: z.string().default("main"),
+      }),
+      execute: async ({ owner, repo, path, branch }) => {
+        const { getBranch, getTree, getBlob, decodeBlob } = await import("@/lib/github.server");
+        try {
+          const head = await getBranch(owner, repo, branch);
+          const tree = await getTree(owner, repo, head.commit.sha);
+          const entry = tree.tree.find((e) => e.type === "blob" && e.path === path);
+          if (!entry) return { ok: false, error: `Path not found: ${path}` };
+          const blob = await getBlob(owner, repo, entry.sha);
+          const content = decodeBlob(blob);
+          if (content === null) return { ok: false, error: "Binary or oversize blob" };
+          return { ok: true, content };
+        } catch (e) {
+          return { ok: false, error: (e as Error).message };
+        }
+      },
+    }),
+    github_commit_push: tool({
+      description:
+        "Commit and push CURRENT project files to the linked GitHub repo. Requires a repo to have been linked/imported first. Pushes selected paths or all files.",
+      inputSchema: z.object({
+        message: z.string().min(1).max(500),
+        paths: z.array(z.string()).optional(),
+      }),
+      execute: async ({ message, paths }) => {
+        try {
+          const { data: conn } = await supabase
+            .from("github_connections")
+            .select("repo_owner, repo_name, default_branch")
+            .eq("project_id", projectId)
+            .maybeSingle();
+          if (!conn) return { ok: false, error: "No GitHub repo linked to this project. Use the GitHub dialog to import or link one." };
+          let q = supabase.from("files")
+            .select("path, content")
+            .eq("project_id", projectId).eq("is_folder", false);
+          if (paths?.length) q = q.in("path", paths);
+          const { data: files } = await q;
+          if (!files?.length) return { ok: false, error: "No files to push" };
+          const { commitFiles } = await import("@/lib/github.server");
+          const commit = await commitFiles(
+            conn.repo_owner, conn.repo_name, conn.default_branch,
+            message,
+            files.map((f: { path: string; content: string }) => ({ path: f.path, content: f.content })),
+          );
+          await supabase.from("github_connections")
+            .update({ last_sha: commit.sha }).eq("project_id", projectId);
+          return { ok: true, sha: commit.sha, pushed: files.length };
+        } catch (e) {
+          return { ok: false, error: (e as Error).message };
+        }
+      },
+    }),
   };
   // Aliases so the agent can use either name.
   return {
