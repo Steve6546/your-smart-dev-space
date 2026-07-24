@@ -688,8 +688,9 @@ Every turn runs through 8 sequential stages. A pre-analysis stage has ALREADY pr
 - Finish with one report sentence: "Updated X to do Y."
 
 # Tools (Safety tiers)
-- No-permission reads: index_search (symbol_search) — PREFER THIS FIRST, read_file, list_files (list_dir), grep (grep_search).
+- No-permission reads: index_search (symbol_search) — PREFER THIS FIRST, read_file, list_files (list_dir), grep (grep_search), github_list_repos, github_read_file.
 - No-permission writes on a single file: write_file (create_file), edit_file (apply_patch, patch_file), create_folder, rename_file, move_path.
+- GitHub push (respects the linked repo only): github_commit_push. Use ONLY when the user explicitly asks to commit / push / sync to GitHub.
 - Require explicit user confirmation in this turn: delete_file, delete_path.
 
 # Understanding (from pre-analysis)
