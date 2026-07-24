@@ -15,6 +15,10 @@ import { QuickOpen } from "./QuickOpen";
 import { MemoryDialog } from "./MemoryDialog";
 import { GitHubDialog } from "./GitHubDialog";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { useServerFn } from "@tanstack/react-start";
+import { getConnection } from "@/lib/github.functions";
+import { Github } from "lucide-react";
 import {
   getFile,
   listFiles,
@@ -38,10 +42,16 @@ export function Workspace({ projectId, threadId }: { projectId: string; threadId
   const listFilesFn = useServerFn(listFiles);
   const getFileFn = useServerFn(getFile);
   const updateFileFn = useServerFn(updateFile);
+  const getConnFn = useServerFn(getConnection);
 
   const filesQuery = useQuery({
     queryKey: ["files", projectId],
     queryFn: () => listFilesFn({ data: { projectId } }),
+  });
+
+  const githubConnQuery = useQuery({
+    queryKey: ["github-conn", projectId],
+    queryFn: () => getConnFn({ data: { projectId } }),
   });
 
   const [tabs, setTabs] = useState<OpenTab[]>([]);
