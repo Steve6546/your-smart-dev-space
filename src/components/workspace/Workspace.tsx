@@ -13,6 +13,7 @@ import { ChatPanel } from "./ChatPanel";
 import { ThreadList } from "./ThreadList";
 import { QuickOpen } from "./QuickOpen";
 import { MemoryDialog } from "./MemoryDialog";
+import { GitHubDialog } from "./GitHubDialog";
 import { toast } from "sonner";
 import {
   getFile,
@@ -225,6 +226,7 @@ export function Workspace({ projectId, threadId }: { projectId: string; threadId
           />
         </div>
         <div className="flex items-center gap-1">
+          <GitHubDialog projectId={projectId} />
           <MemoryDialog projectId={projectId} />
           <Button variant="ghost" size="sm" onClick={signOut} aria-label="Sign out">
             <LogOut className="h-4 w-4" />

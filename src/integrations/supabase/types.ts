@@ -176,6 +176,45 @@ export type Database = {
           },
         ]
       }
+      github_connections: {
+        Row: {
+          created_at: string
+          default_branch: string
+          id: string
+          last_sha: string | null
+          project_id: string
+          repo_name: string
+          repo_owner: string
+          sync_mode: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          default_branch?: string
+          id?: string
+          last_sha?: string | null
+          project_id: string
+          repo_name: string
+          repo_owner: string
+          sync_mode?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          default_branch?: string
+          id?: string
+          last_sha?: string | null
+          project_id?: string
+          repo_name?: string
+          repo_owner?: string
+          sync_mode?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       project_index: {
         Row: {
           api_endpoints: string[]
